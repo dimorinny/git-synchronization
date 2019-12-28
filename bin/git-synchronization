@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+import fire
+
+from synchronization.command import Command
+
+if __name__ == '__main__':
+    fire.Fire(Command)
