@@ -4,7 +4,7 @@ For making two-way repositories synchronization you should:
 * Add remotes, that you're going to synchronize between each others:
 
 ```bash
-git remote add origin git@bitbucket.org:merkurevd/second-synchronize.git
+git remote add origin git@bitbucket.org:merkurevd/synchronize.git
 git remote add second git@bitbucket.org:merkurevd/second-synchronize.git
 ```
 
