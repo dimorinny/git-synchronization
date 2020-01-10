@@ -26,7 +26,10 @@ class Command:
 
         for remote in self._git_repository.remotes:
             for reference in remote.refs:
-                reference_branch_name = self._get_branch_name_from_reference(reference)
+                reference_branch_name = self._get_local_branch_name_from_reference(
+                    remote=remote.name,
+                    reference=reference
+                )
 
                 if reference_branch_name == Command.HEAD:
                     continue
@@ -53,7 +56,7 @@ class Command:
 
         try:
             result_branch = self._git_repository.create_head(path=branch_name, commit=first_reference, force=True)
-            result_branch.checkout()
+            result_branch.checkout(force=True)
             self._clear_current_branch()
 
             for reference in references:
@@ -87,10 +90,10 @@ class Command:
             pass
 
     @staticmethod
-    def _get_branch_name_from_reference(reference: RemoteReference):
-        reference_parsed = reference.name.split("/")
+    def _get_local_branch_name_from_reference(remote: str, reference: RemoteReference):
+        remote_branch_prefix = f'{remote}/'
 
-        if len(reference_parsed) != 2:
-            raise Exception(f'Failed to get branch name from reference: ${reference.name}')
+        if not reference.name.startswith(remote_branch_prefix):
+            raise Exception(f'Failed to get local branch name from reference: {reference.name}')
 
-        return reference_parsed[1]
+        return reference.name[len(remote_branch_prefix):]
