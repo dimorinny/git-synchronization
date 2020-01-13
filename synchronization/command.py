@@ -24,6 +24,8 @@ class Command:
 
             remotes[reference_name].append(remote_reference)
 
+        remotes_count: int = len(self._git_repository.remotes)
+
         for remote in self._git_repository.remotes:
             for reference in remote.refs:
                 reference_branch_name = self._get_local_branch_name_from_reference(
@@ -42,15 +44,35 @@ class Command:
         for branch_name, references in remotes.items():
             self._rebase_remotes_branches_to_local(
                 branch_name=branch_name,
-                references=references
+                references=references,
+                remotes_count=remotes_count
             )
 
-    def _rebase_remotes_branches_to_local(self, branch_name: str, references: List[RemoteReference]):
+    def _rebase_remotes_branches_to_local(
+            self,
+            branch_name: str,
+            references: List[RemoteReference],
+            remotes_count: int
+    ):
         header = f'============================ {branch_name} ============================'
         footer = '=' * len(header)
 
         print(header)
+
         first_reference = references[0]
+
+        def is_all_references_the_same():
+            branch_is_presented_in_every_remote = len(references) == remotes_count
+            all_references_are_the_same = len(set([item.commit for item in references])) == 1
+
+            return branch_is_presented_in_every_remote and all_references_are_the_same
+
+        if is_all_references_the_same():
+            print(f'Branch {branch_name} is the same on every remote. Skipping...')
+            print(footer)
+            print('')
+
+            return
 
         self._clear_current_branch()
 
@@ -85,7 +107,7 @@ class Command:
             pass
 
         try:
-            self._git_repository.git.reset(abort=True)
+            self._git_repository.git.reset(hard=True)
         except Exception:
             pass
 
