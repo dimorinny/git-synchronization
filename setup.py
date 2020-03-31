@@ -9,7 +9,7 @@ except ImportError:
           " install setuptools).")
     sys.exit(1)
 
-__version__ = '0.0.3'
+__version__ = '0.0.7'
 __author__ = 'dimorinny'
 
 # noinspection PyBroadException

@@ -1,13 +1,25 @@
+import re
 from typing import Dict, List
 
-from git import Repo, RemoteReference
+from git import Repo, RemoteReference, Remote
+
+from .merge import Merger
+from .model import RemoteReferenceWithRemote
 
 
 class Command:
     HEAD = 'HEAD'
 
-    def __init__(self, repository: str):
+    def __init__(self, repository: str, fetch: bool = False, **filters):
         self._git_repository = Repo(repository)
+        self._fetch = fetch
+        self._git_merger = Merger(self._git_repository)
+
+        # Origin name -> branch name to sync pattern
+        self._branch_filters = {}
+
+        for origin, pattern in filters.items():
+            self._branch_filters[origin] = re.compile(pattern)
 
     def sync(self):
         if self._git_repository.bare:
@@ -15,16 +27,14 @@ class Command:
 
         self._log_remotes()
 
-        # Branch name -> All references with that branch name
-        remotes: Dict[str, List[RemoteReference]] = {}
+        # Branch name -> All related remote branches to sync
+        remotes: Dict[str, List[RemoteReferenceWithRemote]] = {}
 
-        def add_remote(remote_reference: RemoteReference, reference_name: str):
+        def add_remote(remote_reference: RemoteReferenceWithRemote, reference_name: str):
             if reference_name not in remotes:
                 remotes[reference_name] = []
 
             remotes[reference_name].append(remote_reference)
-
-        remotes_count: int = len(self._git_repository.remotes)
 
         for remote in self._git_repository.remotes:
             for reference in remote.refs:
@@ -36,60 +46,26 @@ class Command:
                 if reference_branch_name == Command.HEAD:
                     continue
 
+                if not self._synchronize_branch_for_remote(
+                        branch_name=reference_branch_name,
+                        remote=remote
+                ):
+                    continue
+
                 add_remote(
-                    remote_reference=reference,
+                    remote_reference=RemoteReferenceWithRemote(
+                        remote=remote,
+                        reference=reference
+                    ),
                     reference_name=reference_branch_name
                 )
 
         for branch_name, references in remotes.items():
-            self._rebase_remotes_branches_to_local(
-                branch_name=branch_name,
+            self._git_merger.merge(
+                local_branch_name=branch_name,
                 references=references,
-                remotes_count=remotes_count
+                fetch=self._fetch
             )
-
-    def _rebase_remotes_branches_to_local(
-            self,
-            branch_name: str,
-            references: List[RemoteReference],
-            remotes_count: int
-    ):
-        header = f'============================ {branch_name} ============================'
-        footer = '=' * len(header)
-
-        print(header)
-
-        first_reference = references[0]
-
-        def is_all_references_the_same():
-            branch_is_presented_in_every_remote = len(references) == remotes_count
-            all_references_are_the_same = len(set([item.commit for item in references])) == 1
-
-            return branch_is_presented_in_every_remote and all_references_are_the_same
-
-        if is_all_references_the_same():
-            print(f'Branch {branch_name} is the same on every remote. Skipping...')
-            print(footer)
-            print('')
-
-            return
-
-        self._clear_current_branch()
-
-        try:
-            result_branch = self._git_repository.create_head(path=branch_name, commit=first_reference, force=True)
-            result_branch.checkout(force=True)
-            self._clear_current_branch()
-
-            for reference in references:
-                print(f'Rebase {result_branch} <- {reference}')
-                output = self._git_repository.git.rebase(reference)
-                print(output)
-        finally:
-            self._clear_current_branch()
-
-            print(footer)
-            print('')
 
     def _log_remotes(self):
         print('===============================================================')
@@ -99,17 +75,13 @@ class Command:
         print('===============================================================')
         print()
 
-    # noinspection PyBroadException
-    def _clear_current_branch(self):
-        try:
-            self._git_repository.git.rebase(abort=True)
-        except Exception:
-            pass
+    def _synchronize_branch_for_remote(self, branch_name: str, remote: Remote) -> bool:
+        remote_pattern = self._branch_filters.get(remote.name, None)
 
-        try:
-            self._git_repository.git.reset(hard=True)
-        except Exception:
-            pass
+        if remote_pattern is None:
+            return True
+
+        return remote_pattern.match(branch_name) is not None
 
     @staticmethod
     def _get_local_branch_name_from_reference(remote: str, reference: RemoteReference):
